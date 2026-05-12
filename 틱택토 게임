@@ -1,0 +1,127 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// ========== 게임 트리 노드 ==========
+#define EMPTY 0
+#define HUMAN 1
+#define AI    2
+#define SIZE  9
+
+typedef struct Node {
+    int board[SIZE];
+    int score;
+    struct Node *children[SIZE];
+    int childCount;
+} Node;
+
+Node* newNode(int board[]) {
+    Node *n = (Node *)malloc(sizeof(Node));
+    memcpy(n->board, board, SIZE * sizeof(int));
+    n->score = 0; n->childCount = 0;
+    for (int i = 0; i < SIZE; i++) n->children[i] = NULL;
+    return n;
+}
+
+void printBoard(int board[]) {
+    char sym[] = {'.', 'O', 'X'};
+    printf("\n");
+    for (int i = 0; i < SIZE; i++) {
+        printf(" %c ", sym[board[i]]);
+        if (i % 3 == 2) printf("\n");
+    }
+    printf("\n");
+}
+
+int checkWin(int board[], int player) {
+    int wins[8][3] = {
+        {0,1,2},{3,4,5},{6,7,8},
+        {0,3,6},{1,4,7},{2,5,8},
+        {0,4,8},{2,4,6}
+    };
+    for (int i = 0; i < 8; i++)
+        if (board[wins[i][0]] == player &&
+            board[wins[i][1]] == player &&
+            board[wins[i][2]] == player) return 1;
+    return 0;
+}
+
+int isFull(int board[]) {
+    for (int i = 0; i < SIZE; i++) if (board[i] == EMPTY) return 0;
+    return 1;
+}
+
+// ========== 미니맥스 트리 ==========
+int minimax(Node *node, int isMaximizing) {
+    if (checkWin(node->board, AI))    return  10;
+    if (checkWin(node->board, HUMAN)) return -10;
+    if (isFull(node->board))          return   0;
+
+    int best = isMaximizing ? -100 : 100;
+    int player = isMaximizing ? AI : HUMAN;
+
+    for (int i = 0; i < SIZE; i++) {
+        if (node->board[i] == EMPTY) {
+            int newBoard[SIZE];
+            memcpy(newBoard, node->board, SIZE * sizeof(int));
+            newBoard[i] = player;
+
+            Node *child = newNode(newBoard);
+            node->children[node->childCount++] = child;
+
+            int score = minimax(child, !isMaximizing);
+            if (isMaximizing) { if (score > best) best = score; }
+            else              { if (score < best) best = score; }
+        }
+    }
+    return best;
+}
+
+int bestMove(int board[]) {
+    int best = -100, move = -1;
+    for (int i = 0; i < SIZE; i++) {
+        if (board[i] == EMPTY) {
+            int newBoard[SIZE];
+            memcpy(newBoard, board, SIZE * sizeof(int));
+            newBoard[i] = AI;
+
+            Node *root = newNode(newBoard);
+            int score = minimax(root, 0);
+            if (score > best) { best = score; move = i; }
+        }
+    }
+    return move;
+}
+
+// ========== main ==========
+int main() {
+    int board[SIZE] = {0};
+    int turn = HUMAN;
+    printf("=== 틱택토 게임 (O: 플레이어, X: AI) ===\n");
+    printf("위치 번호:\n 0 1 2\n 3 4 5\n 6 7 8\n");
+
+    while (1) {
+        printBoard(board);
+        if (checkWin(board, HUMAN)) { printf("플레이어(O) 승리!\n"); break; }
+        if (checkWin(board, AI))    { printf("AI(X) 승리!\n");       break; }
+        if (isFull(board))          { printf("무승부!\n");            break; }
+
+        if (turn == HUMAN) {
+            int pos;
+            printf("위치 입력 (0-8): ");
+            scanf("%d", &pos);
+            if (pos < 0 || pos > 8 || board[pos] != EMPTY) {
+                printf("잘못된 입력!\n"); continue;
+            }
+            board[pos] = HUMAN;
+            turn = AI;
+        } else {
+            int pos = bestMove(board);
+            printf("AI가 %d번 위치에 놓습니다.\n", pos);
+            board[pos] = AI;
+            turn = HUMAN;
+        }
+    }
+    printBoard(board);
+    return 0;
+}
