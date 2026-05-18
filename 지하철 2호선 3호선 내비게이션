@@ -1,0 +1,397 @@
+/*
+ * 서울 지하철 2호선·3호선 경로 탐색 프로그램
+ * 알고리즘: Dijkstra (O(N²))
+ * 노드 수 : 87 (2호선 43 + 3호선 42 + 환승 전용 2)
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define N       87
+#define INF     99999
+
+/* ── 역 이름 ── */
+const char *NAME[N] = {
+    /* 2호선 0~42 */
+    "시청","을지로입구","을지로3가","을지로4가","동대문역사문화공원",
+    "신당","상왕십리","왕십리","한양대","뚝섬",
+    "성수","건대입구","구의","강변","잠실나루",
+    "잠실","잠실새내","종합운동장","삼성","선릉",
+    "역삼","강남","교대","서초","방배",
+    "사당","낙성대","서울대입구","봉천","신림",
+    "신대방","구로디지털단지","대림","신도림","문래",
+    "영등포구청","당산","합정","홍대입구","신촌",
+    "이대","아현","충정로",
+    /* 3호선 43~84 */
+    "대화","주엽","정발산","마두","백석",
+    "대곡","화정","원당","원흥","삼송",
+    "지축","구파발","연신내","불광","녹번",
+    "홍제","무악재","독립문","경복궁","안국",
+    "종로3가","충무로","동대입구","약수","금호",
+    "옥수","압구정","신사","잠원","고속터미널",
+    "남부터미널","양재","매봉","도곡","대치",
+    "학여울","대청","일원","수서","가락시장",
+    "경찰병원","오금",
+    /* 환승 전용 노드 85=을지로3가(3호선측) 86=교대(3호선측) */
+    "을지로3가","교대"
+};
+
+/* 호선 번호 (0 = 환승 전용) */
+const int LNUM[N] = {
+    2,2,2,2,2, 2,2,2,2,2,
+    2,2,2,2,2, 2,2,2,2,2,
+    2,2,2,2,2, 2,2,2,2,2,
+    2,2,2,2,2, 2,2,2,2,2,
+    2,2,2,
+    3,3,3,3,3, 3,3,3,3,3,
+    3,3,3,3,3, 3,3,3,3,3,
+    3,3,3,3,3, 3,3,3,3,3,
+    3,3,3,3,3, 3,3,3,3,3,
+    3,3,
+    0,0
+};
+
+/* ── 인접 행렬 ── */
+int W [N][N];   /* 이동 시간(분) */
+int EL[N][N];   /* 엣지 호선 (0=환승) */
+
+/* ── 다익스트라 변수 ── */
+int dist[N], prev_n[N], done[N];
+
+/* ────────────────────────────────────────────
+   엣지 등록
+────────────────────────────────────────────── */
+static void add_edge(int u, int v, int w, int line)
+{
+    W [u][v] = W [v][u] = w;
+    EL[u][v] = EL[v][u] = line;
+}
+
+/* ── 2호선 구간 (순환선, 43개 역) ── */
+static void build_line2(void)
+{
+    /* 시청~충정로 (외선 방향으로 나열된 순서) */
+    int seq[] = {
+        0,1,2,3,4,5,6,7,8,9,
+        10,11,12,13,14,15,16,17,18,19,
+        20,21,22,23,24,25,26,27,28,29,
+        30,31,32,33,34,35,36,37,38,39,
+        40,41,42
+    };
+    int t[] = {
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2
+    };
+    int cnt = 43;
+    for(int i = 0; i < cnt-1; i++)
+        add_edge(seq[i], seq[i+1], t[i], 2);
+    /* 순환 마감: 충정로(42) ↔ 시청(0) */
+    add_edge(42, 0, 2, 2);
+}
+
+/* ── 3호선 구간 (44개 역, 을지로3가·교대는 85·86) ── */
+static void build_line3(void)
+{
+    /* 대화→오금 방향 순서, 환승 노드 포함 */
+    int seq[] = {
+        43,44,45,46,47,48,49,50,51,52,
+        53,54,55,56,57,58,59,60,61,62,
+        63,85,64,65,66,67,68,69,70,71,
+        72,86,73,74,75,76,77,78,79,80,
+        81,82,83,84
+    };
+    int t[] = {
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2,2,2,2, 2,2,2,2,2,
+        2,2,2
+    };
+    int cnt = 44;
+    for(int i = 0; i < cnt-1; i++)
+        add_edge(seq[i], seq[i+1], t[i], 3);
+}
+
+/* ── 환승 엣지 ── */
+static void build_transfers(void)
+{
+    /* 을지로3가: 2호선(2) ↔ 3호선측(85) */
+    add_edge(2, 85, 5, 0);
+    /* 교대:     2호선(22) ↔ 3호선측(86) */
+    add_edge(22, 86, 5, 0);
+}
+
+/* ── 그래프 초기화 ── */
+void build_graph(void)
+{
+    for(int i=0;i<N;i++)
+        for(int j=0;j<N;j++){
+            W[i][j]  = (i==j) ? 0 : INF;
+            EL[i][j] = -1;
+        }
+    build_line2();
+    build_line3();
+    build_transfers();
+}
+
+/* ────────────────────────────────────────────
+   다익스트라
+────────────────────────────────────────────── */
+void dijkstra(int src)
+{
+    for(int i=0;i<N;i++){
+        dist[i]   = INF;
+        prev_n[i] = -1;
+        done[i]   = 0;
+    }
+    dist[src] = 0;
+
+    for(int iter=0;iter<N;iter++){
+        /* 미확정 중 최소 노드 */
+        int u = -1;
+        for(int i=0;i<N;i++)
+            if(!done[i] && (u==-1 || dist[i]<dist[u])) u=i;
+        if(u==-1 || dist[u]==INF) break;
+        done[u]=1;
+
+        for(int v=0;v<N;v++){
+            if(W[u][v]==INF) continue;
+            if(dist[u]+W[u][v] < dist[v]){
+                dist[v]   = dist[u]+W[u][v];
+                prev_n[v] = u;
+            }
+        }
+    }
+}
+
+/* ────────────────────────────────────────────
+   경로 출력
+────────────────────────────────────────────── */
+
+/* 실제 역 이름 (환승 전용 85,86 → 원래 이름으로) */
+static const char *real_name(int node)
+{
+    if(node==85) return "을지로3가";
+    if(node==86) return "교대";
+    return NAME[node];
+}
+
+/* 역의 실제 호선 (환승 노드는 3호선으로 간주) */
+static int real_line(int node)
+{
+    if(node==85||node==86) return 3;
+    return LNUM[node];
+}
+
+void print_route(int src, int dst)
+{
+    /* ── 목적지 보정:
+       교대·을지로3가는 2호선 노드(22,2)로 입력받지만
+       최적 도착지가 환승 노드(86,85)일 수 있으므로 비교 ── */
+    int real_dst = dst;
+    if(dst==2  && dist[85]<dist[2])  real_dst=85;
+    if(dst==22 && dist[86]<dist[22]) real_dst=86;
+    if(dst==85 && dist[2] <dist[85]) real_dst=2;
+    if(dst==86 && dist[22]<dist[86]) real_dst=22;
+
+    if(dist[real_dst]==INF){
+        printf("  경로를 찾을 수 없습니다.\n");
+        return;
+    }
+
+    /* 경로 역추적 */
+    int path[N], len=0, cur=real_dst;
+    while(cur!=-1){ path[len++]=cur; cur=prev_n[cur]; }
+    /* 역순 */
+    for(int i=0;i<len/2;i++){
+        int tmp=path[i]; path[i]=path[len-1-i]; path[len-1-i]=tmp;
+    }
+
+    /* 환승 횟수 계산 (환승 엣지 이동 = 1회) */
+    int transfers=0;
+    for(int i=0;i<len-1;i++)
+        if(EL[path[i]][path[i+1]]==0) transfers++;
+
+    int total_time = dist[real_dst];
+
+    printf("\n  ------------------------------------------\n");
+    printf("  출발: %s (%d호선)\n", real_name(src), real_line(src));
+    printf("  도착: %s (%d호선)\n", real_name(real_dst), real_line(real_dst));
+    printf("  소요시간: 약 %d분  |  환승: %d회\n", total_time, transfers);
+    printf("  ------------------------------------------\n\n");
+
+    /* 구간 출력 */
+    int cur_line = real_line(path[0]);
+    printf("  [%d호선 탑승]\n", cur_line);
+    printf("  * %s (출발)\n", real_name(path[0]));
+
+    for(int i=1;i<len;i++){
+        int edge_line = EL[path[i-1]][path[i]];
+
+        if(edge_line==0){
+            /* 환승 */
+            int next_line = real_line(path[i]);
+            printf("  ★ 환승 → [%d호선] 탑승 (약 5분)\n", next_line);
+            cur_line = next_line;
+            /* 환승 노드(85,86) 자체는 표시 생략, 다음 실제 역을 출력 */
+            if(i==len-1)
+                printf("  * %s (도착)\n", real_name(path[i]));
+            /* 환승 노드라면 다음 루프에서 출력됨 */
+        } else {
+            if(i==len-1)
+                printf("  * %s (도착)\n", real_name(path[i]));
+            else
+                printf("  | %s\n", real_name(path[i]));
+        }
+    }
+
+    /* 탑승 구간 수 = 전체 노드 수 - 1 - 환승 수 */
+    int segs = (len-1) - transfers;
+    printf("\n  탑승 구간: %d개  (소요 약 %d분)\n\n", segs, total_time);
+}
+
+/* ────────────────────────────────────────────
+   역 검색
+────────────────────────────────────────────── */
+int search_stations(const char *kw, int *res, int max)
+{
+    int cnt=0;
+    for(int i=0;i<N && cnt<max;i++){
+        if(i==85||i==86) continue;   /* 환승 전용 노드 제외 */
+        if(strstr(NAME[i], kw)) res[cnt++]=i;
+    }
+    return cnt;
+}
+
+/* ── 역 선택 대화형 UI ── */
+int select_station(const char *prompt)
+{
+    char buf[128];
+    int res[20], cnt;
+
+    while(1){
+        printf("  %s (역 이름 또는 일부 입력): ", prompt);
+        fflush(stdout);
+        if(!fgets(buf, sizeof(buf), stdin)) return -1;
+        buf[strcspn(buf,"\n")]='\0';
+        if(strlen(buf)==0) continue;
+
+        cnt = search_stations(buf, res, 20);
+
+        if(cnt==0){
+            printf("  검색 결과가 없습니다. 다시 입력해 주세요.\n\n");
+            continue;
+        }
+        if(cnt==1){
+            printf("  → %s (%d호선) 선택됨\n\n", NAME[res[0]], LNUM[res[0]]);
+            return res[0];
+        }
+
+        printf("  검색 결과 (%d개):\n", cnt);
+        for(int i=0;i<cnt;i++)
+            printf("    %2d. %s (%d호선)\n", i+1, NAME[res[i]], LNUM[res[i]]);
+        printf("  번호를 선택하세요 (1~%d): ", cnt);
+        fflush(stdout);
+
+        if(!fgets(buf, sizeof(buf), stdin)) return -1;
+        int choice = atoi(buf);
+        if(choice>=1 && choice<=cnt){
+            printf("  → %s (%d호선) 선택됨\n\n", NAME[res[choice-1]], LNUM[res[choice-1]]);
+            return res[choice-1];
+        }
+        printf("  잘못된 입력입니다.\n\n");
+    }
+}
+
+/* ── 역 목록 출력 ── */
+void list_stations(void)
+{
+    printf("\n  ┌─────────────────────────────────────┐\n");
+    printf("    │         2호선 역 목록 (43개)         │\n");
+    printf("    └─────────────────────────────────────┘\n");
+    for(int i=0;i<=42;i++){
+        printf("  %2d. %s", i, NAME[i]);
+        if(i==2||i==22) printf(" ★환승");
+        printf("\n");
+    }
+
+    printf("\n  ┌─────────────────────────────────────┐\n");
+    printf("    │         3호선 역 목록 (42개)         │\n");
+    printf("    └─────────────────────────────────────┘\n");
+    /* 표시 순서에 을지로3가·교대 삽입 */
+    int display3[] = {
+        43,44,45,46,47,48,49,50,51,52,
+        53,54,55,56,57,58,59,60,61,62,
+        63, /* 종로3가 다음 → 을지로3가(85 표시) */
+        -1, /* 을지로3가 */
+        64,65,66,67,68,69,70,71,72,
+        -2, /* 교대 */
+        73,74,75,76,77,78,79,80,81,82,
+        83,84
+    };
+    int d3cnt = sizeof(display3)/sizeof(display3[0]);
+    for(int i=0;i<d3cnt;i++){
+        int v = display3[i];
+        if(v==-1)      printf("  ★ 을지로3가 (환승: 2호선)\n");
+        else if(v==-2) printf("  ★ 교대 (환승: 2호선)\n");
+        else           printf("  %2d. %s\n", v, NAME[v]);
+    }
+    printf("\n");
+}
+
+/* ────────────────────────────────────────────
+   main
+────────────────────────────────────────────── */
+int main(void)
+{
+    build_graph();
+
+    printf("\n");
+    printf("  ????????????????????????????????????????\n");
+    printf("  ?   서울 지하철 2·3호선 경로 탐색       ?\n");
+    printf("  ????????????????????????????????????????\n\n");
+
+    char buf[16];
+    while(1){
+        printf("  ┌─────────────────────────┐\n");
+        printf("  │  1. 경로 탐색            │\n");
+        printf("  │  2. 역 목록 보기         │\n");
+        printf("  │  3. 종료                 │\n");
+        printf("  └─────────────────────────┘\n");
+        printf("  선택 > ");
+        fflush(stdout);
+
+        if(!fgets(buf, sizeof(buf), stdin)) break;
+        int menu = atoi(buf);
+
+        if(menu==1){
+            printf("\n");
+            int src = select_station("출발역");
+            if(src<0) break;
+            int dst = select_station("도착역");
+            if(dst<0) break;
+
+            if(src==dst || (src==2&&dst==85)||(src==85&&dst==2)||
+                          (src==22&&dst==86)||(src==86&&dst==22)){
+                printf("  출발역과 도착역이 같습니다.\n\n");
+                continue;
+            }
+
+            dijkstra(src);
+            print_route(src, dst);
+
+        } else if(menu==2){
+            list_stations();
+        } else if(menu==3){
+            printf("\n  프로그램을 종료합니다.\n\n");
+            break;
+        } else {
+            printf("  잘못된 선택입니다.\n\n");
+        }
+    }
+    return 0;
+}
